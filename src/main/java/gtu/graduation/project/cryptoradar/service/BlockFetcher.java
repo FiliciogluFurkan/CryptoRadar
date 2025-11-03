@@ -61,13 +61,7 @@ public class BlockFetcher {
     }
 
     private Map<BigInteger, List<Block.Log>> processLogsResponse(EthLog ethLog) {
-        return Optional.ofNullable(ethLog.getLogs())
-                .orElse(Collections.emptyList())
-                .stream()
-                .collect(Collectors.groupingBy(
-                        logResult -> ((Log) logResult.get()).getBlockNumber(),
-                        Collectors.mapping(logResult -> logMapper.map((Log) logResult.get()), Collectors.toList())
-                ));
+        return Optional.ofNullable(ethLog.getLogs()).orElse(Collections.emptyList()).stream().collect(Collectors.groupingBy(logResult -> ((Log) logResult.get()).getBlockNumber(), Collectors.mapping(logResult -> logMapper.map((Log) logResult.get()), Collectors.toList())));
     }
 
     private List<Block> processBatchResponse(BatchResponse response) {
@@ -79,11 +73,19 @@ public class BlockFetcher {
         for (Response<?> blockResponse : responses) {
             EthBlock.Block block = ((EthBlock) blockResponse).getBlock();
             Block.Info info = getInfo(block);
-            List<Block.Transaction> transactions = getTransactions(block);
-            List<Block.Log> logs = logsByBlock.getOrDefault(block.getNumber(), Collections.emptyList());
-            blocks.add(new Block(info, transactions.stream().reduce(), logs));
+
+            // Build transactions map
+            Map<String, Block.Transaction> transactions = getTransactions(block).stream().collect(Collectors.toMap(Block.Transaction::hash, // assuming your Transaction record has a method 'hash()'
+                    tx -> tx));
+
+            // Build logs map grouped by transaction hash
+            Map<String, List<Block.Log>> logsByTx = logsByBlock.getOrDefault(block.getNumber(), Collections.emptyList()).stream().collect(Collectors.groupingBy(Block.Log::transactionHash)); // assuming your Log record has 'transactionHash()'
+
+            blocks.add(new Block(info, transactions, logsByTx));
         }
+
         return blocks;
+
     }
 
     private Block.Info getInfo(EthBlock.Block block) {
@@ -109,9 +111,6 @@ public class BlockFetcher {
     }
 
     private Request<?, ? extends Response<?>> createBlockRequest(Web3j web3j, Long blockNumber) {
-        return web3j.ethGetBlockByNumber(
-                DefaultBlockParameter.valueOf(BigInteger.valueOf(blockNumber)),
-                true
-        );
+        return web3j.ethGetBlockByNumber(DefaultBlockParameter.valueOf(BigInteger.valueOf(blockNumber)), true);
     }
 }
