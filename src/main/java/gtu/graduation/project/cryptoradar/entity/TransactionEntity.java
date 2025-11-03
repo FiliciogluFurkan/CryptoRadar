@@ -5,8 +5,12 @@ import lombok.*;
 
 @Entity
 @Table(name = "transactions")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class TxEntity {
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class TransactionEntity {
 
     @Id
     private String hash;
