@@ -8,13 +8,13 @@ import java.util.Map;
 
 public record Block(Block.Info info, Map<String, Transaction> transactions, Map<String, List<Block.Log>> logs) {
 
-    public record Info(BigInteger blockNumber, Instant timestamp, BigInteger baseFeePerGas) {
+    public record Info(Long blockNumber, String hash, Instant timestamp, BigInteger baseFeePerGas) {
     }
 
     public record Transaction(String hash,
-                              String nonce,
+                              BigInteger nonce,
                               String blockHash,
-                              BigInteger blockNumber,
+                              Long blockNumber,
                               String from,
                               String to,
                               BigInteger value,

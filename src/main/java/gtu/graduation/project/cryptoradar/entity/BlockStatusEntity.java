@@ -22,23 +22,15 @@ import java.util.UUID;
 )
 public class BlockStatusEntity {
 
+    @Column(name = "block_number", nullable = false)
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
-    private UUID id;
+    private Long blockNumber;
 
     @Enumerated(value = EnumType.STRING)
     @Column(name = "network_type")
     private NetworkType networkType;
 
-    @Column(name = "block_number", nullable = false)
-    private BigInteger blockNumber;
-
-    @Column(name = "status", nullable = false)
+    @Column(name = "block_status", nullable = false)
     @Enumerated(value = EnumType.STRING)
-    private Status status;
-}
-
-enum Status {
-    PROCESSED,
-    FAILED
+    private BlockStatus status;
 }

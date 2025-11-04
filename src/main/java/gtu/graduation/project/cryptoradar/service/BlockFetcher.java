@@ -1,13 +1,17 @@
 package gtu.graduation.project.cryptoradar.service;
 
 import gtu.graduation.project.cryptoradar.config.ProcessorConfig;
+import gtu.graduation.project.cryptoradar.entity.BlockStatus;
+import gtu.graduation.project.cryptoradar.entity.BlockStatusEntity;
 import gtu.graduation.project.cryptoradar.mapper.Mapper;
 import gtu.graduation.project.cryptoradar.model.Block;
 import gtu.graduation.project.cryptoradar.model.LogFilter;
+import gtu.graduation.project.cryptoradar.model.NetworkType;
 import gtu.graduation.project.cryptoradar.repository.BlockCheckpointRepository;
 import gtu.graduation.project.cryptoradar.repository.BlockRepository;
-import gtu.graduation.project.cryptoradar.repository.TxRepository;
+import gtu.graduation.project.cryptoradar.repository.BlockStatusRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.*;
@@ -25,13 +29,14 @@ import java.util.stream.LongStream;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class BlockFetcher {
 
     private final BlockRepository blockRepo;
-    private final TxRepository txRepo;
     private final BlockCheckpointRepository blockCheckpointRepository;
     private final ProcessorConfig config;
     private final Web3j web3j;
+    private final BlockStatusRepository blockStatusRepository;
     private final Mapper<Block.Log, Log> logMapper;
     private final Mapper<Block.Transaction, EthBlock.TransactionObject> transactionMapper;
 
@@ -40,14 +45,14 @@ public class BlockFetcher {
         EthFilter ethFilter = convertFilter(filter);
         BatchRequest request = createRequest(ethFilter, start, end);
         BatchResponse response = request.send();
-        return processBatchResponse(response);
+        return processBatchResponse(start.longValue(), end.longValue(), response);
     }
 
     public List<Block> fetch(BigInteger start, BigInteger end) throws IOException {
         EthFilter ethFilter = createFilter(start, end);
         BatchRequest request = createRequest(ethFilter, start, end);
         BatchResponse response = request.send();
-        return processBatchResponse(response);
+        return processBatchResponse(start.longValue(), end.longValue(), response);
     }
 
     private EthFilter convertFilter(LogFilter filter) {
@@ -64,36 +69,69 @@ public class BlockFetcher {
         return Optional.ofNullable(ethLog.getLogs()).orElse(Collections.emptyList()).stream().collect(Collectors.groupingBy(logResult -> ((Log) logResult.get()).getBlockNumber(), Collectors.mapping(logResult -> logMapper.map((Log) logResult.get()), Collectors.toList())));
     }
 
-    private List<Block> processBatchResponse(BatchResponse response) {
+    private List<Block> processBatchResponse(Long startBlock, Long endBlock, BatchResponse response) {
         List<Response<?>> responses = new LinkedList<>(response.getResponses());
-        EthLog ethLog = (EthLog) responses.removeFirst();
+
+        // Check if first response (eth_getLogs) has error
+        Response<?> logResponse = responses.removeFirst();
+        if (logResponse.hasError()) {
+            return Collections.emptyList();
+        }
+
+        EthLog ethLog = (EthLog) logResponse;
         Map<BigInteger, List<Block.Log>> logsByBlock = processLogsResponse(ethLog);
 
         List<Block> blocks = new ArrayList<>();
+        List<BlockStatusEntity> failed = new ArrayList<>();
+
+        long i = startBlock;
         for (Response<?> blockResponse : responses) {
-            EthBlock.Block block = ((EthBlock) blockResponse).getBlock();
+            // Check for errors in individual block requests
+            if (blockResponse.hasError()) {
+                Response.Error error = blockResponse.getError();
+                log.warn("Failed to fetch block: {} - {}", error.getCode(), error.getMessage());
+
+                failed.add(new BlockStatusEntity(i, NetworkType.MAINNET, BlockStatus.FAILED));
+                continue;
+            }
+
+            EthBlock ethBlock = (EthBlock) blockResponse;
+            EthBlock.Block block = ethBlock.getBlock();
+
+            if (block == null) {
+                log.warn("Received null block in response");
+                continue;
+            }
+
             Block.Info info = getInfo(block);
 
             // Build transactions map
-            Map<String, Block.Transaction> transactions = getTransactions(block).stream().collect(Collectors.toMap(Block.Transaction::hash, // assuming your Transaction record has a method 'hash()'
-                    tx -> tx));
+            Map<String, Block.Transaction> transactions = getTransactions(block).stream()
+                    .collect(Collectors.toMap(Block.Transaction::hash, tx -> tx));
 
             // Build logs map grouped by transaction hash
-            Map<String, List<Block.Log>> logsByTx = logsByBlock.getOrDefault(block.getNumber(), Collections.emptyList()).stream().collect(Collectors.groupingBy(Block.Log::transactionHash)); // assuming your Log record has 'transactionHash()'
+            Map<String, List<Block.Log>> logsByTx = logsByBlock
+                    .getOrDefault(block.getNumber(), Collections.emptyList())
+                    .stream()
+                    .collect(Collectors.groupingBy(Block.Log::transactionHash));
 
             blocks.add(new Block(info, transactions, logsByTx));
+            i++;
         }
 
+        blockStatusRepository.saveAll(failed);
         return blocks;
-
     }
 
     private Block.Info getInfo(EthBlock.Block block) {
-        return new Block.Info(block.getNumber(), Instant.ofEpochSecond(block.getTimestamp().longValue()), block.getBaseFeePerGas());
+        return new Block.Info(block.getNumber().longValue(), block.getHash(), Instant.ofEpochSecond(block.getTimestamp().longValue()), block.getBaseFeePerGas());
     }
 
     private List<Block.Transaction> getTransactions(EthBlock.Block block) {
-        return block.getTransactions().stream().map((tx -> transactionMapper.map((EthBlock.TransactionObject) tx.get()))).toList();
+        return block.getTransactions().stream()
+                .filter(tx -> ((EthBlock.TransactionObject) tx.get()).getTo() != null)
+                .map((tx -> transactionMapper.map((EthBlock.TransactionObject) tx.get())))
+                .toList();
     }
 
     public BatchRequest createRequest(EthFilter logFilter, BigInteger start, BigInteger end) {

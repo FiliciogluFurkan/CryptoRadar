@@ -48,10 +48,7 @@ public class BlockEntity {
     @Column(name = "total_transactions")
     private Integer totalTransactions;
 
-    @Column(name = "total_gas_used")
-    private BigInteger totalGasUsed;
-
-    protected BlockEntity() {
+    public BlockEntity() {
     }
 
     public BlockEntity(Long blockNumber, String blockHash, Instant timestamp, BigInteger baseFeePerGas, List<TransactionEntity> transactions) {
@@ -75,7 +72,6 @@ public class BlockEntity {
     public void calculateGasStatistics() {
         if (transactions.isEmpty()) {
             this.totalTransactions = 0;
-            this.totalGasUsed = BigInteger.ZERO;
             this.avgGasPrice = BigDecimal.ZERO;
             this.avgMaxFeePerGas = BigDecimal.ZERO;
             this.avgMaxPriorityFeePerGas = BigDecimal.ZERO;
@@ -89,7 +85,6 @@ public class BlockEntity {
         BigDecimal sumMaxFeePerGas = BigDecimal.ZERO;
         BigDecimal sumMaxPriorityFeePerGas = BigDecimal.ZERO;
         BigDecimal sumEffectiveFeePerGas = BigDecimal.ZERO;
-        BigInteger totalGas = BigInteger.ZERO;
 
         int gasPriceCount = 0;
         int maxFeeCount = 0;
@@ -117,9 +112,6 @@ public class BlockEntity {
                 effectiveFeeCount++;
             }
 
-            if (tx.getGasUsed() != null) {
-                totalGas = totalGas.add(tx.getGasUsed());
-            }
         }
 
         this.avgGasPrice = gasPriceCount > 0 ? sumGasPrice.divide(BigDecimal.valueOf(gasPriceCount), 18, RoundingMode.HALF_UP) : null;
@@ -129,7 +121,5 @@ public class BlockEntity {
         this.avgMaxPriorityFeePerGas = maxPriorityFeeCount > 0 ? sumMaxPriorityFeePerGas.divide(BigDecimal.valueOf(maxPriorityFeeCount), 18, RoundingMode.HALF_UP) : null;
 
         this.avgEffectiveFeePerGas = effectiveFeeCount > 0 ? sumEffectiveFeePerGas.divide(BigDecimal.valueOf(effectiveFeeCount), 18, RoundingMode.HALF_UP) : null;
-
-        this.totalGasUsed = totalGas;
     }
 }

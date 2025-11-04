@@ -11,5 +11,7 @@ import java.util.UUID;
 
 public interface BlockStatusRepository extends JpaRepository<BlockStatusEntity, UUID> {
 
-    Optional<BlockStatusEntity> findByNetworkTypeAndBlockNumber(NetworkType networkType, BigInteger blockNumber);
+    Optional<BlockStatusEntity> findByNetworkTypeAndBlockNumber(NetworkType networkType, Long blockNumber);
+
+    Optional<BlockStatusEntity> findTopByNetworkTypeOrderByBlockNumberDesc(NetworkType networkType);
 }

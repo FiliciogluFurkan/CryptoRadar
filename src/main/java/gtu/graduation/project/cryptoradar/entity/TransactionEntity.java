@@ -1,6 +1,7 @@
 package gtu.graduation.project.cryptoradar.entity;
 
 import gtu.graduation.project.cryptoradar.model.Token;
+import gtu.graduation.project.cryptoradar.model.TokenType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -20,17 +21,16 @@ import java.util.UUID;
 @NoArgsConstructor
 public class TransactionEntity {
 
-    @Id
-    private UUID id;
-
-    @Column(name = "block_number")
-    private Long blockNumber;
 
     @Column(nullable = false, unique = true, length = 66)
+    @Id
     private String hash;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    private BlockEntity block;
+
     @Column(nullable = false)
-    private String nonce;
+    private BigInteger nonce;
 
     @Column(nullable = false, length = 42)
     private String fromAddress;
@@ -47,9 +47,6 @@ public class TransactionEntity {
     @Column(name = "gas_limit", nullable = false, precision = 38, scale = 0)
     private BigInteger gasLimit;
 
-    @Column(name = "gas_used", precision = 38, scale = 0)
-    private BigInteger gasUsed;
-
     @Column(name = "max_fee_per_gas", precision = 38, scale = 0)
     private BigInteger maxFeePerGas;
 
@@ -59,22 +56,17 @@ public class TransactionEntity {
     @Column(name = "effective_fee_per_gas", precision = 38, scale = 0)
     private BigInteger effectiveFeePerGas; // Actual fee paid per gas
 
-    @Column(name = "total_fee", precision = 38, scale = 18)
-    private BigDecimal totalFee; // effectiveFeePerGas * gasUsed in ETH
-
     @Column(name = "token")
-    @Enumerated(value = EnumType.STRING)
-    private Token token;
+    @Enumerated(EnumType.STRING)
+    private TokenType token;
 
     @Column(length = 10)
     private String type; // "0x0", "0x1", "0x2" (legacy, EIP-2930, EIP-1559)
 
-    public TransactionEntity(UUID id, Long blockNumber, String hash, String nonce, String fromAddress, String toAddress,
-                             BigInteger value, BigInteger gasPrice, BigInteger gasLimit,
-                             BigInteger gasUsed, BigInteger maxFeePerGas, BigInteger maxPriorityFeePerGas,
-                             Token token, String type, BigInteger baseFeePerGas) {
-        this.id = id;
-        this.blockNumber = blockNumber;
+    public TransactionEntity(BlockEntity block, String hash, BigInteger nonce, String fromAddress, String toAddress,
+                             BigInteger value, BigInteger gasPrice, BigInteger gasLimit, BigInteger maxFeePerGas, BigInteger maxPriorityFeePerGas,
+                             TokenType token, String type, BigInteger baseFeePerGas) {
+        this.block = block;
         this.hash = hash;
         this.nonce = nonce;
         this.fromAddress = fromAddress;
@@ -83,7 +75,6 @@ public class TransactionEntity {
         this.value = value;
         this.gasPrice = gasPrice;
         this.gasLimit = gasLimit;
-        this.gasUsed = gasUsed;
         this.maxFeePerGas = maxFeePerGas;
         this.maxPriorityFeePerGas = maxPriorityFeePerGas;
         this.token = token;
@@ -105,12 +96,6 @@ public class TransactionEntity {
         } else if (gasPrice != null) {
             // Legacy or EIP-2930 transaction
             this.effectiveFeePerGas = gasPrice;
-        }
-
-        // Calculate total fee in ETH
-        if (effectiveFeePerGas != null && gasUsed != null) {
-            BigDecimal feeInWei = new BigDecimal(effectiveFeePerGas.multiply(gasUsed));
-            this.totalFee = feeInWei.divide(new BigDecimal("1000000000000000000"), 18, RoundingMode.HALF_UP);
         }
     }
 }

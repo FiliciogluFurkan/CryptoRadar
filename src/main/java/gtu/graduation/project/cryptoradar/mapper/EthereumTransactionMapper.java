@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import org.web3j.protocol.core.methods.response.EthBlock;
 import org.web3j.utils.Numeric;
 
+import java.math.BigInteger;
 import java.util.Locale;
 
 @Component
@@ -18,9 +19,9 @@ public class EthereumTransactionMapper implements Mapper<Block.Transaction, EthB
 
         return new Block.Transaction(
                 entity.getHash(),
-                Numeric.encodeQuantity(entity.getNonce()),
+                parseHexToBigInt(entity.getNonceRaw()),
                 entity.getBlockHash(),
-                entity.getBlockNumber(),
+                entity.getBlockNumber().longValue(),
                 entity.getFrom().toLowerCase(Locale.ENGLISH),
                 entity.getTo().toLowerCase(Locale.ENGLISH),
                 entity.getValue(),
@@ -28,7 +29,16 @@ public class EthereumTransactionMapper implements Mapper<Block.Transaction, EthB
                 entity.getGas(),
                 entity.getType(),
                 entity.getMaxFeePerGas(),
-                entity.getMaxPriorityFeePerGas()
+                parseHexToBigInt(entity.getMaxPriorityFeePerGasRaw())
         );
+    }
+
+    public static BigInteger parseHexToBigInt(String hexValue) {
+        if (hexValue == null || hexValue.isEmpty()) return BigInteger.ZERO;
+        if (hexValue.startsWith("0x") || hexValue.startsWith("x")) {
+            hexValue = hexValue.substring(hexValue.indexOf("x") + 1);
+        }
+        if (hexValue.isEmpty()) return BigInteger.ZERO;
+        return new BigInteger(hexValue, 16);
     }
 }
