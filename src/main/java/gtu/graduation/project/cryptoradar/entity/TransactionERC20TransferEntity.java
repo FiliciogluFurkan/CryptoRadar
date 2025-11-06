@@ -2,25 +2,30 @@ package gtu.graduation.project.cryptoradar.entity;
 
 import gtu.graduation.project.cryptoradar.model.TokenType;
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.math.BigInteger;
 import java.util.UUID;
 
 @Entity
-@Table(name = "transaction_transfers", indexes = {@Index(name = "idx_tx_hash", columnList = "hash"), @Index(name = "idx_tx_from", columnList = "fromAddress"), @Index(name = "idx_tx_to", columnList = "toAddress"),})
+@Table(name = "transaction_erc20_transfers", indexes = {
+        @Index(name = "idx_erc20_tx_from", columnList = "fromAddress"),
+        @Index(name = "idx_erc20_tx_to", columnList = "toAddress"),
+        @Index(name = "idx_erc20_transaction", columnList = "transaction_hash"),
+        @Index(name = "idx_erc20_block", columnList = "block_block_number"),
+})
 @Getter
 @Setter
 @NoArgsConstructor
-public class TransactionTransferERC20Entity {
+@Builder
+@AllArgsConstructor
+public class TransactionERC20TransferEntity {
 
     @Id
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    private TransactionTransferEntity transaction;
+    private TransactionNativeTransferEntity transaction;
 
     @ManyToOne(fetch = FetchType.LAZY)
     private BlockEntity block;
@@ -34,14 +39,14 @@ public class TransactionTransferERC20Entity {
     @Column(nullable = false, precision = 78)
     private BigInteger value;
 
-    @Column(name = "token")
+    @Column(name = "token", length = 10)
     @Enumerated(EnumType.STRING)
     private TokenType token;
 
-    @Column(length = 10)
+    @Column(length = 3)
     private String type; // "0x0", "0x1", "0x2" (legacy, EIP-2930, EIP-1559)
 
-    public TransactionTransferERC20Entity(BlockEntity block, String fromAddress, String toAddress, BigInteger value, BigInteger gasPrice, BigInteger gasLimit, BigInteger maxFeePerGas, BigInteger maxPriorityFeePerGas, TokenType token, String type, BigInteger baseFeePerGas, boolean isContractInteraction, BigInteger tokenValue) {
+    public TransactionERC20TransferEntity(BlockEntity block, String fromAddress, String toAddress, BigInteger value, TokenType token, String type, TransactionNativeTransferEntity transaction) {
         this.block = block;
         this.transaction = transaction;
         this.fromAddress = fromAddress;

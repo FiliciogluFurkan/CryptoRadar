@@ -31,8 +31,8 @@ public class BlockEntity {
     @Column(name = "base_fee_per_gas", nullable = false)
     private BigInteger baseFeePerGas;
 
-    @OneToMany(mappedBy = "block", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<TransactionTransferEntity> transactions = new ArrayList<>();
+    @Transient
+    private List<TransactionNativeTransferEntity> transactions = new ArrayList<>();
 
     @Column(name = "avg_gas_price", precision = 78)
     private BigDecimal avgGasPrice;
@@ -61,7 +61,7 @@ public class BlockEntity {
     public BlockEntity() {
     }
 
-    public BlockEntity(Long blockNumber, String blockHash, Instant timestamp, BigInteger baseFeePerGas, List<TransactionTransferEntity> transactions) {
+    public BlockEntity(Long blockNumber, String blockHash, Instant timestamp, BigInteger baseFeePerGas, List<TransactionNativeTransferEntity> transactions) {
         this.blockNumber = blockNumber;
         this.blockHash = blockHash;
         this.timestamp = timestamp;
@@ -70,7 +70,7 @@ public class BlockEntity {
         calculateGasStatistics();
     }
 
-    public BlockEntity setTransactions(List<TransactionTransferEntity> transactions) {
+    public BlockEntity setTransactions(List<TransactionNativeTransferEntity> transactions) {
         this.transactions = transactions;
         calculateGasStatistics();
         return this;
@@ -105,7 +105,7 @@ public class BlockEntity {
         int effectiveFeeCount = 0;
         int valueCount = 0;
 
-        for (TransactionTransferEntity tx : transactions) {
+        for (TransactionNativeTransferEntity tx : transactions) {
             if (tx.getGasPrice() != null) {
                 sumGasPrice = sumGasPrice.add(new BigDecimal(tx.getGasPrice()));
                 gasPriceCount++;
@@ -136,22 +136,32 @@ public class BlockEntity {
 
         this.avgGasPrice = gasPriceCount > 0 ? sumGasPrice.divide(BigDecimal.valueOf(gasPriceCount), 18, RoundingMode.HALF_UP) : null;
 
-        List<TransactionTransferEntity> filteredValues = transactions.stream()
+        List<TransactionNativeTransferEntity> filteredValues = transactions.stream()
                 .filter(tx -> tx.getValue() != null && !tx.getValue().equals(BigInteger.ZERO))
                 .filter(tx -> !tx.isContractInteraction())
                 .toList();
-        BigDecimal valueVariance = filteredValues.stream()
-                .map(v -> new BigDecimal(v.getValue()).subtract(this.averageValue).pow(2))
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .divide(new BigDecimal(filteredValues.size()), RoundingMode.HALF_UP);
 
-        List<TransactionTransferEntity> filteredGases = transactions.stream()
-                .filter(tx -> tx.getGasPrice() != null && !tx.getGasPrice().equals(BigInteger.ZERO))
+        BigDecimal valueVariance = BigDecimal.ZERO;
+        if (!filteredValues.isEmpty()) {
+            valueVariance = filteredValues.stream()
+                    .map(v -> new BigDecimal(v.getValue())
+                            .subtract(this.averageValue)
+                            .pow(2))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .divide(new BigDecimal(filteredValues.size()), RoundingMode.HALF_UP);
+        }
+
+        List<TransactionNativeTransferEntity> filteredGases = transactions.stream()
+                .filter(tx -> tx.getGasPrice() != null && !tx.getGasPrice().equals(0L))
                 .toList();
-        BigDecimal gasVariance = filteredGases.stream()
-                .map(v -> new BigDecimal(v.getGasPrice()).subtract(this.avgGasPrice).pow(2))
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .divide(new BigDecimal(filteredGases.size()), RoundingMode.HALF_UP);
+
+        BigDecimal gasVariance = BigDecimal.ZERO;
+        if(!filteredGases.isEmpty()) {
+            gasVariance = filteredGases.stream()
+                    .map(v -> new BigDecimal(v.getGasPrice()).subtract(this.avgGasPrice).pow(2))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .divide(new BigDecimal(filteredGases.size()), RoundingMode.HALF_UP);
+        }
 
         this.gasPriceStandardDeviation = gasVariance.sqrt(MathContext.DECIMAL128);
 

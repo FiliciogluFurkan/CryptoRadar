@@ -5,11 +5,33 @@ spring:
     url: jdbc:postgresql://localhost:5432/cryptoradar
     username: admin
     password: admin
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 20000
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
       ddl-auto: update
     show-sql: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 100
+          batch_versioned_data: true
+          fetch_size: 50
+        order_inserts: true
+        order_updates: true
+        id:
+          new_generator_mappings: true
+        # Cache configuration
+        cache:
+          use_second_level_cache: false
+          use_query_cache: false
+        # Statement management
+        statement:
+          batch_size: 100
+
 
 processor:
   parallelism: 1

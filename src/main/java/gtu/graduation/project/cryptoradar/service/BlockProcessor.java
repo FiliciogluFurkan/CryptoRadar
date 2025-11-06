@@ -2,37 +2,38 @@ package gtu.graduation.project.cryptoradar.service;
 
 import gtu.graduation.project.cryptoradar.config.ProcessorConfig;
 import gtu.graduation.project.cryptoradar.config.TokenConfiguration;
-import gtu.graduation.project.cryptoradar.entity.BlockEntity;
-import gtu.graduation.project.cryptoradar.entity.BlockStatus;
-import gtu.graduation.project.cryptoradar.entity.BlockStatusEntity;
-import gtu.graduation.project.cryptoradar.entity.TransactionTransferEntity;
+import gtu.graduation.project.cryptoradar.entity.*;
 import gtu.graduation.project.cryptoradar.model.Block;
 import gtu.graduation.project.cryptoradar.model.NetworkType;
 import gtu.graduation.project.cryptoradar.model.Token;
 import gtu.graduation.project.cryptoradar.model.TokenType;
 import gtu.graduation.project.cryptoradar.repository.BlockRepository;
 import gtu.graduation.project.cryptoradar.repository.BlockStatusRepository;
+import gtu.graduation.project.cryptoradar.repository.ERC20TransactionRepository;
+import gtu.graduation.project.cryptoradar.repository.NativeTransactionRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
 @Service
+@Slf4j
 public class BlockProcessor {
 
     private final ProcessorConfig config;
     private final BlockStatusRepository blockStatusRepository;
     private final TokenConfiguration tokenConfiguration;
     private final BlockRepository blockRepository;
+    private final ERC20TransactionRepository erc20TransactionRepository;
+    private final NativeTransactionRepository nativeTransactionRepository;
 
     private final NetworkType networkType = NetworkType.MAINNET;
 
@@ -52,7 +53,7 @@ public class BlockProcessor {
         if (blockStatusRepository.findByNetworkTypeAndBlockNumber(networkType, block.info().blockNumber()).isPresent()) {
             return;
         }
-        List<TransactionTransferEntity> transactionEntities = new ArrayList<>();
+        List<TransactionNativeTransferEntity> transactionEntities = new ArrayList<>();
 
         BlockEntity blockEntity = new BlockEntity();
         blockEntity.setBaseFeePerGas(block.info().baseFeePerGas());
@@ -60,48 +61,59 @@ public class BlockProcessor {
         blockEntity.setBlockNumber(block.info().blockNumber());
         blockEntity.setBlockHash(block.info().hash());
 
-        for (Map.Entry<String, Block.Transaction> entry : block.transactions().entrySet()) {
-            String transactionHash = entry.getKey();
-            Block.Transaction transaction = entry.getValue();
-            List<Block.Log> transactionLogs = block.logs().getOrDefault(transactionHash, List.of());
-            TransactionTransferEntity txEntity = createTx(blockEntity, transaction, transactionLogs, block.info().baseFeePerGas());
-            txEntity.calculateEffectiveFee(block.info().baseFeePerGas());
-            transactionEntities.add(txEntity);
+        try {
+            for (Map.Entry<String, Block.Transaction> entry : block.transactions().entrySet()) {
+                String transactionHash = entry.getKey();
+                Block.Transaction transaction = entry.getValue();
+                List<Block.Log> transactionLogs = block.logs().getOrDefault(transactionHash, List.of());
+                TransactionNativeTransferEntity txEntity = createTx(blockEntity, transaction, transactionLogs, block.info().baseFeePerGas());
+                txEntity.calculateEffectiveFee(block.info().baseFeePerGas());
+                transactionEntities.add(txEntity);
+            }
+
+            blockEntity.setTransactions(transactionEntities);
+
+            blockEntity.calculateGasStatistics();
+
+            calculateZScores(blockEntity, transactionEntities);
+
+            blockRepository.save(blockEntity);
+            nativeTransactionRepository.saveAll(blockEntity.getTransactions());
+            List<TransactionERC20TransferEntity> allErc20Transfers = blockEntity.getTransactions().stream()
+                    .flatMap(transaction -> transaction.getTransactions().stream())
+                    .collect(Collectors.toList());
+            erc20TransactionRepository.saveAll(allErc20Transfers);
+            blockStatusRepository.save(new BlockStatusEntity( block.info().blockNumber(), networkType, BlockStatus.PROCESSED));
+        } catch (Exception e) {
+            log.error("An error occurred during processing block: {}, error: {}", block.info().blockNumber(), e.getMessage(), e);
+            blockStatusRepository.save(new BlockStatusEntity(block.info().blockNumber(), networkType, BlockStatus.FAILED));
         }
 
-        blockEntity.setTransactions(transactionEntities);
-
-        blockEntity.calculateGasStatistics();
-
-        calculateZScores(blockEntity, transactionEntities);
-
-        blockRepository.save(blockEntity);
-        blockStatusRepository.save(new BlockStatusEntity( block.info().blockNumber(), networkType, BlockStatus.PROCESSED));
     }
 
-    private void calculateZScores(BlockEntity block, List<TransactionTransferEntity> transactions) {
-        for(TransactionTransferEntity transaction : transactions) {
+    private void calculateZScores(BlockEntity block, List<TransactionNativeTransferEntity> transactions) {
+        for(TransactionNativeTransferEntity transaction : transactions) {
             if(!transaction.isContractInteraction()) {
                 BigDecimal valueDecimal = new BigDecimal(transaction.getValue());
                 BigDecimal valueZScore = valueDecimal.subtract(block.getAverageValue())
                         .divide(block.getValueStandardDeviation(), RoundingMode.HALF_UP);
-                transaction.setValueZScore(valueZScore);
+                transaction.setValueZScore(valueZScore.doubleValue());
             }
 
             BigDecimal gasZscore = new BigDecimal(transaction.getEffectiveFeePerGas())
                     .subtract(block.getAvgGasPrice())       // you already store avgGasPrice
                     .divide(block.getGasPriceStandardDeviation(), RoundingMode.HALF_UP);
-            transaction.setGasZScore(gasZscore);
+            transaction.setGasZScore(gasZscore.doubleValue());
         }
 
-        List<BigInteger> priorityFees = transactions.stream()
-                .map(TransactionTransferEntity::getMaxPriorityFeePerGas)
+        List<Long> priorityFees = transactions.stream()
+                .map(TransactionNativeTransferEntity::getMaxPriorityFeePerGas)
                 .sorted()
                 .toList();
 
         int size = priorityFees.size();
 
-        for (TransactionTransferEntity tx : transactions) {
+        for (TransactionNativeTransferEntity tx : transactions) {
             int rank = Collections.binarySearch(priorityFees, tx.getMaxPriorityFeePerGas());
             if (rank < 0) rank = -rank - 1; // standard fix if no exact match
 
@@ -109,24 +121,20 @@ public class BlockProcessor {
             BigDecimal percentile = new BigDecimal(rank)
                     .divide(new BigDecimal(size - 1), 5, RoundingMode.HALF_UP);
 
-            tx.setPriorityFeePercentile(percentile);
+            tx.setPriorityFeePercentile(percentile.doubleValue());
         }
     }
 
-    private List<TransactionTransferEntity> createTx(BlockEntity blockRef, Block.Transaction tx, List<Block.Log> logs, BigInteger baseFeePerGas) {
+    private TransactionNativeTransferEntity createTx(BlockEntity blockRef, Block.Transaction tx, List<Block.Log> logs, BigInteger baseFeePerGas) {
         if (logs.isEmpty()) {
-            return List.of(new TransactionTransferEntity(blockRef, tx.hash(), tx.nonce(), tx.from(), tx.to(), tx.value(), tx.gasPrice(), tx.gas(), // gasLimit
-                    tx.maxFeePerGas(), tx.maxPriorityFeePerGas(), TokenType.ETH, tx.type(), baseFeePerGas, false, null));
+            return new TransactionNativeTransferEntity(blockRef, tx.hash(), tx.nonce(), tx.from(), tx.to(), tx.value(), tx.gasPrice(), tx.gas(), // gasLimit
+                    tx.maxFeePerGas(), tx.maxPriorityFeePerGas(), TokenType.ETH, tx.type(), baseFeePerGas, false);
         } else {
             // For ERC20 tokens, extract transfer information from logs
             // ERC20 Transfer event signature: Transfer(address,address,uint256)
             // Topic0: 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
-            List<TransactionTransferEntity> txs = new ArrayList<>();
-
-            BigInteger tokenValue = BigInteger.ZERO;
-            String actualSender = tx.from(); // default to transaction sender
-            String actualRecipient = tx.to(); // default to contract address
-            String contractAddress = null;
+            TransactionNativeTransferEntity transaction = new TransactionNativeTransferEntity(blockRef, tx.hash(), tx.nonce(), tx.from(), tx.to(), tx.value(), tx.gasPrice(), tx.gas(), // gasLimit
+                    tx.maxFeePerGas(), tx.maxPriorityFeePerGas(), TokenType.ETH, tx.type(), baseFeePerGas, false);
 
             // Find the Transfer event log for this token
             for (Block.Log log : logs) {
@@ -135,30 +143,27 @@ public class BlockProcessor {
                     continue;
                 }
 
-                actualSender = "0x" + log.topics().get(1).substring(26); // Remove padding from address
-                actualRecipient = "0x" + log.topics().get(2).substring(26); // Remove padding from address
+                String actualSender = "0x" + log.topics().get(1).substring(26); // Remove padding from address
+                String actualRecipient = "0x" + log.topics().get(2).substring(26); // Remove padding from address
+                String contractAddress = log.address();
 
-                contractAddress = log.address();
-
-                // Parse the transfer amount from log data
+                BigInteger tokenValue = BigInteger.ZERO;
                 if (log.data() != null && !log.data().equals("0x")) {
                     tokenValue = new BigInteger(log.data().substring(2), 16);
                 }
 
-                TransactionTransferEntity entity = new TransactionTransferEntity(blockRef, tx.hash(), tx.nonce(), actualSender, // The actual token sender from logs
-                        actualRecipient, // The actual token recipient from logs
-                        tx.value(),// The token amount transferred
-                        tx.gasPrice(), tx.gas(), // gasLimit
-                        tx.maxFeePerGas(), tx.maxPriorityFeePerGas(), TokenType.fromToken(determineToken(contractAddress)), tx.type(), baseFeePerGas, true, tokenValue);
-
-
+                transaction.getTransactions().add(TransactionERC20TransferEntity.builder()
+                        .id(UUID.randomUUID())
+                        .block(blockRef)
+                        .token(TokenType.fromToken(determineToken(contractAddress)))
+                        .fromAddress(actualSender)
+                        .toAddress(actualRecipient)
+                        .transaction(transaction)
+                        .type(tx.type())
+                        .value(tokenValue)
+                        .build());
             }
-
-            return new TransactionTransferEntity(blockRef, tx.hash(), tx.nonce(), actualSender, // The actual token sender from logs
-                    actualRecipient, // The actual token recipient from logs
-                    tx.value(),// The token amount transferred
-                    tx.gasPrice(), tx.gas(), // gasLimit
-                    tx.maxFeePerGas(), tx.maxPriorityFeePerGas(), TokenType.fromToken(determineToken(contractAddress)), tx.type(), baseFeePerGas, true, tokenValue);
+            return transaction;
         }
     }
 
