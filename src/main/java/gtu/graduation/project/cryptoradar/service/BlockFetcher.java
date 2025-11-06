@@ -4,9 +4,7 @@ import gtu.graduation.project.cryptoradar.config.ProcessorConfig;
 import gtu.graduation.project.cryptoradar.entity.BlockStatus;
 import gtu.graduation.project.cryptoradar.entity.BlockStatusEntity;
 import gtu.graduation.project.cryptoradar.mapper.Mapper;
-import gtu.graduation.project.cryptoradar.model.Block;
-import gtu.graduation.project.cryptoradar.model.LogFilter;
-import gtu.graduation.project.cryptoradar.model.NetworkType;
+import gtu.graduation.project.cryptoradar.model.*;
 import gtu.graduation.project.cryptoradar.repository.BlockCheckpointRepository;
 import gtu.graduation.project.cryptoradar.repository.BlockRepository;
 import gtu.graduation.project.cryptoradar.repository.BlockStatusRepository;
@@ -128,6 +126,11 @@ public class BlockFetcher {
     }
 
     private List<Block.Transaction> getTransactions(EthBlock.Block block) {
+        Optional<EthBlock.TransactionResult> tx1 =  block.getTransactions().stream().filter(transactionResult -> ((EthBlock.TransactionObject) transactionResult.get()).getHash().equals("0x010ddc53a34a0ff66ea43c1e5715383e5bbc9afa5aca056bda2da185b2841f40")).findAny();
+        if(tx1.isPresent()) {
+            EthBlock.TransactionObject tx2 = (EthBlock.TransactionObject) tx1.get();
+            log.info("Transaction: {}, {}", tx2.getValue(), tx2.getTo());
+        }
         return block.getTransactions().stream()
                 .filter(tx -> ((EthBlock.TransactionObject) tx.get()).getTo() != null)
                 .map((tx -> transactionMapper.map((EthBlock.TransactionObject) tx.get())))

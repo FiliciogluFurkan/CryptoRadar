@@ -36,7 +36,7 @@ public class ProcessorConfig {
         this.startBlock = startBlock;
         this.transferTopic = transferTopic;
         this.parallelism = parallelism;
-        this.trackingAddresses = addressConfig.getAddresses().stream().map(String::toLowerCase).toList();
+        this.trackingAddresses = addressConfig.getAddresses().stream().map(String::toUpperCase).toList();
     }
 
     @Bean

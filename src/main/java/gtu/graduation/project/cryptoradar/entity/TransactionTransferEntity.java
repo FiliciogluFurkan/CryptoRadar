@@ -1,6 +1,5 @@
 package gtu.graduation.project.cryptoradar.entity;
 
-import gtu.graduation.project.cryptoradar.model.Token;
 import gtu.graduation.project.cryptoradar.model.TokenType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -8,10 +7,9 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
-import java.util.UUID;
 
 @Entity
-@Table(name = "transactions", indexes = {
+@Table(name = "transaction_transfers", indexes = {
         @Index(name = "idx_tx_hash", columnList = "hash"),
         @Index(name = "idx_tx_from", columnList = "fromAddress"),
         @Index(name = "idx_tx_to", columnList = "toAddress"),
@@ -19,7 +17,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
-public class TransactionEntity {
+public class TransactionTransferEntity {
 
 
     @Column(nullable = false, unique = true, length = 66)
@@ -38,8 +36,11 @@ public class TransactionEntity {
     @Column(length = 42)
     private String toAddress;
 
-    @Column(nullable = false, precision = 38, scale = 0)
+    @Column(nullable = false, precision = 78)
     private BigInteger value;
+
+    @Column(nullable = true, precision = 78)
+    private BigInteger tokenValue;
 
     @Column(name = "gas_price", precision = 38, scale = 0)
     private BigInteger gasPrice;
@@ -63,9 +64,27 @@ public class TransactionEntity {
     @Column(length = 10)
     private String type; // "0x0", "0x1", "0x2" (legacy, EIP-2930, EIP-1559)
 
-    public TransactionEntity(BlockEntity block, String hash, BigInteger nonce, String fromAddress, String toAddress,
-                             BigInteger value, BigInteger gasPrice, BigInteger gasLimit, BigInteger maxFeePerGas, BigInteger maxPriorityFeePerGas,
-                             TokenType token, String type, BigInteger baseFeePerGas) {
+    @Column(name = "priority_fee_ratio",  precision = 38, scale = 18)
+    private BigDecimal priorityFeeRatio;
+
+    @Column(name = "base_fee_ratio")
+    private BigDecimal baseFeeRatio;
+
+    @Column(name = "is_contract_interaction")
+    private boolean isContractInteraction;
+
+    @Column(name = "value_z_score", nullable = true)
+    private BigDecimal valueZScore;
+
+    @Column(name = "gas_z_score")
+    private BigDecimal gasZScore;
+
+    @Column(name = "priority_fee_percentile")
+    private BigDecimal priorityFeePercentile;
+
+    public TransactionTransferEntity(BlockEntity block, String hash, BigInteger nonce, String fromAddress, String toAddress,
+                                     BigInteger value, BigInteger gasPrice, BigInteger gasLimit, BigInteger maxFeePerGas, BigInteger maxPriorityFeePerGas,
+                                     TokenType token, String type, BigInteger baseFeePerGas, boolean isContractInteraction, BigInteger tokenValue) {
         this.block = block;
         this.hash = hash;
         this.nonce = nonce;
@@ -78,7 +97,19 @@ public class TransactionEntity {
         this.maxFeePerGas = maxFeePerGas;
         this.maxPriorityFeePerGas = maxPriorityFeePerGas;
         this.token = token;
+        this.tokenValue = tokenValue;
         this.type = type;
+        if(maxFeePerGas != null && !maxFeePerGas.equals(BigInteger.ZERO) && maxPriorityFeePerGas != null && !maxPriorityFeePerGas.equals(BigInteger.ZERO)) {
+            this.priorityFeeRatio = new BigDecimal(maxPriorityFeePerGas, 18).divide(new BigDecimal(maxFeePerGas, 18), RoundingMode.HALF_DOWN);
+        } else {
+            this.priorityFeeRatio = null;
+        }
+        if(maxFeePerGas != null && !maxFeePerGas.equals(BigInteger.ZERO)) {
+            this.baseFeeRatio = new BigDecimal(maxFeePerGas, 18).divide(new BigDecimal(block.getBaseFeePerGas(), 18), RoundingMode.HALF_DOWN);
+        } else {
+            this.baseFeeRatio = null;
+        }
+        this.isContractInteraction = isContractInteraction;
         calculateEffectiveFee(baseFeePerGas);
     }
 

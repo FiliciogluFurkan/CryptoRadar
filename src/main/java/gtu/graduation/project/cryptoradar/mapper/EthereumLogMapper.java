@@ -21,7 +21,7 @@ public class EthereumLogMapper implements Mapper<Block.Log, Log> {
                 entity.getTransactionHash(),
                 entity.getBlockHash(),
                 entity.getBlockNumber(),
-                entity.getAddress().toLowerCase(Locale.ENGLISH),
+                entity.getAddress().toUpperCase(Locale.ENGLISH),
                 entity.getData(),
                 entity.getType(),
                 entity.getTopics()
