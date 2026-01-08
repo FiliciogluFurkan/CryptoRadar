@@ -34,6 +34,7 @@ public class BlockProcessor {
     private final BlockRepository blockRepository;
     private final ERC20TransactionRepository erc20TransactionRepository;
     private final NativeTransactionRepository nativeTransactionRepository;
+    private final AddressFeatureService addressFeatureService;
 
     private final NetworkType networkType = NetworkType.MAINNET;
 
@@ -84,6 +85,15 @@ public class BlockProcessor {
                     .collect(Collectors.toList());
             erc20TransactionRepository.saveAll(allErc20Transfers);
             blockStatusRepository.save(new BlockStatusEntity( block.info().blockNumber(), networkType, BlockStatus.PROCESSED));
+
+            try {
+                addressFeatureService.updateAddressFeaturesBatch(blockEntity.getTransactions());
+                log.debug("Updated address features for block: {}", block.info().blockNumber());
+            } catch (Exception e) {
+                log.error("Failed to update address features for block: {}", block.info().blockNumber(), e);
+                // Transaction'ları kaydetme başarılı olduğu için continue et
+            }
+
         } catch (Exception e) {
             log.error("An error occurred during processing block: {}, error: {}", block.info().blockNumber(), e.getMessage(), e);
             blockStatusRepository.save(new BlockStatusEntity(block.info().blockNumber(), networkType, BlockStatus.FAILED));

@@ -1,5 +1,8 @@
 package gtu.graduation.project.cryptoradar.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import gtu.graduation.project.cryptoradar.model.TokenType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -27,6 +30,7 @@ public class TransactionNativeTransferEntity {
     private String hash;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JsonIgnore
     private BlockEntity block;
 
     @Column(nullable = false)
@@ -39,6 +43,7 @@ public class TransactionNativeTransferEntity {
     private String toAddress;
 
     @Column(nullable = false, precision = 78)
+    @JsonSerialize(using = ToStringSerializer.class)
     private BigInteger value; // keep full wei range
 
     @Column(name = "gas_price")

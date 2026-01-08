@@ -1,9 +1,0 @@
-<component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Radar" type="Application" factoryName="Application">
-    <option name="MAIN_CLASS_NAME" value="gtu.graduation.project.cryptoradar.CryptoradarApplication" />
-    <module name="cryptoradar" />
-    <method v="2">
-      <option name="Make" enabled="true" />
-    </method>
-  </configuration>
-</component>
