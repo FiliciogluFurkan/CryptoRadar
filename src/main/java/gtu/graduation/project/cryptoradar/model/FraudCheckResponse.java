@@ -5,8 +5,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
- * Python ML modelinden dönen cevap
+ * Python ML modelinden dönen cevap + Risk skoru
  */
 @Data
 @Builder
@@ -14,8 +16,13 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class FraudCheckResponse {
     private String address;
-    private boolean fraud;
+    private Boolean fraud;
     private Double fraudProbability;
     private Double normalProbability;
     private String message;
+    
+    // Risk scoring
+    private Integer riskScore;        // 0-100
+    private String riskLevel;         // SAFE, LOW, MEDIUM, HIGH
+    private List<String> riskFactors; // Risk faktörleri listesi
 }

@@ -1,8 +1,10 @@
 package gtu.graduation.project.cryptoradar.service;
 
 import gtu.graduation.project.cryptoradar.entity.AddressFeatureEntity;
+import gtu.graduation.project.cryptoradar.entity.WatchlistTransactionEntity;
 import gtu.graduation.project.cryptoradar.model.AlchemyTransferResponse.Transfer;
 import gtu.graduation.project.cryptoradar.repository.AddressFeatureRepository;
+import gtu.graduation.project.cryptoradar.repository.WatchlistTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,7 @@ public class AddressWatchlistService {
 
     private final AlchemyService alchemyService;
     private final AddressFeatureRepository addressFeatureRepository;
+    private final WatchlistTransactionRepository watchlistTransactionRepository;
 
     /**
      * Yeni bir adresi izleme listesine ekler.
@@ -37,6 +40,8 @@ public class AddressWatchlistService {
         Optional<AddressFeatureEntity> existing = addressFeatureRepository.findById(address);
         if (existing.isPresent()) {
             log.info("Address {} already in watchlist, refreshing data...", address);
+            // Eski transaction'ları sil
+            watchlistTransactionRepository.deleteByWatchedAddress(address);
         }
 
         // Alchemy'den transfer'ları çek
@@ -47,12 +52,46 @@ public class AddressWatchlistService {
         // Feature'ları hesapla
         AddressFeatureEntity feature = calculateFeatures(address, outgoing, incoming);
 
-        // Kaydet
+        // Feature'ları kaydet
         addressFeatureRepository.save(feature);
+
+        // Transaction'ları kaydet
+        saveTransactions(address, outgoing, true);
+        saveTransactions(address, incoming, false);
+
         log.info("Address {} added to watchlist with {} sent and {} received transactions",
                 address, outgoing.size(), incoming.size());
 
         return feature;
+    }
+
+    /**
+     * Transaction'ları veritabanına kaydeder
+     */
+    private void saveTransactions(String watchedAddress, List<Transfer> transfers, boolean isOutgoing) {
+        List<WatchlistTransactionEntity> entities = new ArrayList<>();
+
+        for (Transfer tx : transfers) {
+            WatchlistTransactionEntity entity = WatchlistTransactionEntity.builder()
+                    .hash(tx.getHash())
+                    .watchedAddress(watchedAddress)
+                    .fromAddress(tx.getFrom() != null ? tx.getFrom().toLowerCase() : null)
+                    .toAddress(tx.getTo() != null ? tx.getTo().toLowerCase() : null)
+                    .value(tx.getValue() != null ? BigDecimal.valueOf(tx.getValue()) : BigDecimal.ZERO)
+                    .asset(tx.getAsset())
+                    .category(tx.getCategory())
+                    .blockTimestamp(parseBlockTimestamp(tx))
+                    .blockNum(tx.getBlockNum())
+                    .isOutgoing(isOutgoing)
+                    .build();
+            entities.add(entity);
+        }
+
+        if (!entities.isEmpty()) {
+            watchlistTransactionRepository.saveAll(entities);
+            log.info("Saved {} {} transactions for address {}",
+                    entities.size(), isOutgoing ? "outgoing" : "incoming", watchedAddress);
+        }
     }
 
     /**
@@ -61,6 +100,9 @@ public class AddressWatchlistService {
     @Transactional
     public void removeFromWatchlist(String address) {
         address = address.toLowerCase();
+        // Önce transaction'ları sil
+        watchlistTransactionRepository.deleteByWatchedAddress(address);
+        // Sonra adresi sil
         addressFeatureRepository.deleteById(address);
         log.info("Address {} removed from watchlist", address);
     }
