@@ -168,7 +168,11 @@ public class AddressWatchlistService {
 
         // Total
         feature.setTotalTransactions(feature.getSentTnx() + feature.getReceivedTnx());
-        feature.setTotalEtherBalance(feature.getTotalEtherReceived().subtract(feature.getTotalEtherSent()));
+        
+        // Gerçek bakiyeyi Alchemy'den al (eth_getBalance)
+        BigDecimal realBalance = alchemyService.getBalance(address);
+        feature.setTotalEtherBalance(realBalance);
+        log.info("Real balance for {}: {} ETH", address, realBalance);
 
         // Timing
         calculateTimingFeatures(feature, outgoing, incoming);

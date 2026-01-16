@@ -256,7 +256,7 @@ public class RiskScoringService {
     private String getRiskLevel(int score) {
         if (score >= 70) return "HIGH";
         if (score >= 40) return "MEDIUM";
-        if (score >= 20) return "LOW";g
+        if (score >= 20) return "LOW";
         return "SAFE";
     }
 

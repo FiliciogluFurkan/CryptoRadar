@@ -11,6 +11,9 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,12 +25,52 @@ import java.util.Map;
 public class AlchemyService {
 
     private final RestTemplate restTemplate;
+    private static final BigDecimal WEI_TO_ETH = new BigDecimal("1000000000000000000");
 
     @Value("${alchemy.api.key:ZvfGfPEBrKJGcqrlxDJFG}")
     private String apiKey;
 
     @Value("${alchemy.api.url:https://eth-mainnet.g.alchemy.com/v2/}")
     private String baseUrl;
+
+    /**
+     * Bir adresin gerçek ETH bakiyesini çeker (eth_getBalance)
+     */
+    public BigDecimal getBalance(String address) {
+        try {
+            String url = baseUrl + apiKey;
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("jsonrpc", "2.0");
+            body.put("method", "eth_getBalance");
+            body.put("params", List.of(address, "latest"));
+            body.put("id", 1);
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restTemplate.postForObject(url, entity, Map.class);
+
+            if (response != null && response.get("result") != null) {
+                String hexBalance = (String) response.get("result");
+                // Hex'ten BigInteger'a çevir (0x prefix'i kaldır)
+                BigInteger weiBalance = new BigInteger(hexBalance.substring(2), 16);
+                // Wei'den ETH'e çevir
+                BigDecimal ethBalance = new BigDecimal(weiBalance).divide(WEI_TO_ETH, 18, RoundingMode.HALF_UP);
+                log.info("Balance for {}: {} ETH", address, ethBalance);
+                return ethBalance;
+            }
+
+            return BigDecimal.ZERO;
+
+        } catch (Exception e) {
+            log.error("Failed to get balance for {}: {}", address, e.getMessage());
+            return BigDecimal.ZERO;
+        }
+    }
 
     /**
      * Bir adresin TÜM gönderdiği transfer'ları çeker

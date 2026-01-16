@@ -90,22 +90,39 @@ public class FraudDetectionService {
     private FraudCheckRequest buildRequest(AddressFeatureEntity feature) {
         return FraudCheckRequest.builder()
                 .address(feature.getAddress())
+                // Transaction counts
                 .sentTnx(feature.getSentTnx())
                 .receivedTnx(feature.getReceivedTnx())
                 .totalTransactions(feature.getTotalTransactions())
-                .avgValSent(feature.getAvgValSent())
-                .avgValReceived(feature.getAvgValReceived())
-                .totalEtherSent(feature.getTotalEtherSent())
-                .totalEtherReceived(feature.getTotalEtherReceived())
-                .totalEtherBalance(feature.getTotalEtherBalance())
-                .uniqueSentToAddresses(feature.getUniqueSentToAddresses())
-                .uniqueReceivedFromAddresses(feature.getUniqueReceivedFromAddresses())
-                .timeDiffFirstLastMins(feature.getTimeDiffFirstLastMins())
+                // Timing
                 .avgMinBetweenSentTnx(feature.getAvgMinBetweenSentTnx())
                 .avgMinBetweenReceivedTnx(feature.getAvgMinBetweenReceivedTnx())
+                .timeDiffFirstLastMins(feature.getTimeDiffFirstLastMins())
+                // Network
+                .uniqueSentToAddresses(feature.getUniqueSentToAddresses())
+                .uniqueReceivedFromAddresses(feature.getUniqueReceivedFromAddresses())
                 .numberOfCreatedContracts(feature.getNumberOfCreatedContracts())
+                // Sent values
+                .minValSent(feature.getMinValSent())
+                .maxValSent(feature.getMaxValSent())
+                .avgValSent(feature.getAvgValSent())
+                .totalEtherSent(feature.getTotalEtherSent())
+                // Received values
+                .minValueReceived(feature.getMinValueReceived())
+                .maxValueReceived(feature.getMaxValueReceived())
+                .avgValReceived(feature.getAvgValReceived())
+                .totalEtherReceived(feature.getTotalEtherReceived())
+                // Balance
+                .totalEtherBalance(feature.getTotalEtherBalance())
+                // Contract values
+                .minValueSentToContract(feature.getMinValueSentToContract())
+                .maxValSentToContract(feature.getMaxValSentToContract())
+                .avgValueSentToContract(feature.getAvgValueSentToContract())
                 .totalEtherSentContracts(feature.getTotalEtherSentContracts())
+                // ERC20 basic
                 .totalErc20Tnxs(feature.getTotalErc20Tnxs())
+                .erc20TotalEtherReceived(feature.getErc20TotalEtherReceived())
+                .erc20TotalEtherSent(feature.getErc20TotalEtherSent())
                 .build();
     }
 

@@ -64,7 +64,7 @@ public class DashboardController {
             @RequestParam String address) {
         String normalizedAddress = address.toLowerCase();
 
-        // Watchlist transaction tablosundan çek
+        // Watchlist transaction tablosundan çek (son 20)
         List<WatchlistTransactionEntity> watchlistTxs =
                 watchlistTransactionRepository.findTop20ByWatchedAddressOrderByBlockTimestampDesc(normalizedAddress);
 
@@ -115,5 +115,34 @@ public class DashboardController {
                 .findAll(PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "totalTransactions")))
                 .getContent();
         return ResponseEntity.ok(addresses);
+    }
+
+    /**
+     * Tüm transaction'ları döner (chart'lar için)
+     */
+    @GetMapping("/transactions/all-by-address")
+    public ResponseEntity<List<Map<String, Object>>> getAllTransactionsByAddress(
+            @RequestParam String address) {
+        String normalizedAddress = address.toLowerCase();
+
+        List<WatchlistTransactionEntity> watchlistTxs =
+                watchlistTransactionRepository.findByWatchedAddressOrderByBlockTimestampDesc(normalizedAddress);
+
+        List<Map<String, Object>> result = watchlistTxs.stream()
+                .map(tx -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("hash", tx.getHash());
+                    map.put("fromAddress", tx.getFromAddress());
+                    map.put("toAddress", tx.getToAddress());
+                    map.put("value", tx.getValue());
+                    map.put("asset", tx.getAsset());
+                    map.put("category", tx.getCategory());
+                    map.put("isOutgoing", tx.isOutgoing());
+                    map.put("blockTimestamp", tx.getBlockTimestamp());
+                    return map;
+                })
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(result);
     }
 }
